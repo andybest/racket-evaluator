@@ -26,7 +26,7 @@
     [`(define (,binding ,args ...) ,body ...) (list 'define-lambda binding 'args args 'body body)]
     [`(define ,binding ,val) (list 'define binding 'as val)]
 
-    [`(lambda (,args ...) ,body ...) (list 'lambda-with-args args 'body body)]
+    [`(lambda (,args ...) ,body ...) (compound-procedure args body)]
 
     [`(if ,condition ,consequent) (eval-if condition consequent null env)]
     [`(if ,condition ,consequent ,alternative) (eval-if condition consequent alternative env)]
@@ -35,6 +35,7 @@
 
     ; Apply form
     [`(,operator ,operands ...) (apply-proc (eval-expr operator env)
+                                            env
                                             (list-of-values operands env))]
 
     [_ (error "Unknown expression" expr)]
@@ -66,15 +67,16 @@
 ; A user-defined procedure
 (struct compound-procedure (args body))
 
-(define-generic (apply-proc proc _))
+(define-generic (apply-proc proc _ _))
 
 ; Apply for primitive procedures
-(define-instance ((apply-proc primitive-procedure) proc args)
+(define-instance ((apply-proc primitive-procedure) proc env args)
   (apply (primitive-procedure-func proc) args))
 
 ; Apply for regular procedures
-(define-instance ((apply-proc compound-procedure) proc args)
-  (display "MCE Procedure"))
+(define-instance ((apply-proc compound-procedure) proc env args)
+  (let ((newenv (extend-environment (compound-procedure-args proc) (list-of-values args env) env)))
+    (last (list-of-values (compound-procedure-body proc) newenv))))
 
 (define (procedure? p)
   (or (primitive-procedure? p)
@@ -197,4 +199,15 @@
   (check-equal? (eval-expr '(if false 1 2) '()) 2)
 
   ; Apply form
-  (check-equal? (eval-expr '(car (quote (1 2 3))) (make-default-environment)) 1))
+  (check-equal? (eval-expr '(car (quote (1 2 3))) (make-default-environment)) 1)
+
+  ; Lambda test
+  (check-equal? (eval-expr '((lambda (x) x) 1) (make-default-environment)) 1)
+  (check-equal? (eval-expr '((lambda (x) (+ x x)) 4) (make-default-environment)) 8)
+  (check-equal? (eval-expr '((lambda (x y)
+                               ((lambda (a b)
+                                  (+ (+ a a) b))
+                                x y))
+                             (+ 1 2) (+ 1 3 4))
+                           (make-default-environment)) 14)
+  )
